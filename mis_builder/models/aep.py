@@ -14,7 +14,7 @@ from .accounting_none import AccountingNone
 MODE_VARIATION = 'p'
 MODE_INITIAL = 'i'
 MODE_END = 'e'
-
+MODE_UNALLOCATED = 'u'
 
 class AccountingExpressionProcessor(object):
     """ Processor for accounting expressions.
@@ -58,8 +58,8 @@ class AccountingExpressionProcessor(object):
           discover the children accounts.
     """
 
-    ACC_RE = re.compile(r"(?P<field>\bbal|\bcrd|\bdeb)"
-                        r"(?P<mode>[pise])?"
+    ACC_RE = re.compile(r"(?P<field>\bbal|\bpbal|\bnbal|\bcrd|\bdeb)"
+                        r"(?P<mode>[piseu])?"
                         r"(?P<accounts>_[a-zA-Z0-9]+|\[.*?\])"
                         r"(?P<domain>\[.*?\])?")
 
@@ -263,6 +263,10 @@ class AccountingExpressionProcessor(object):
             if mode == MODE_VARIATION:
                 period_ids.extend(self._get_period_ids_between(
                     period_from, period_to, company_id))
+            elif mode == MODE_UNALLOCATED:
+                init_period = self.env['account.period'].search([], order='date_start', limit=1)
+                end_period = self.env['account.period'].search([('date_stop', '<', period_from.date_start)], order='date_stop desc', limit=1)
+                period_ids.extend(self._get_period_ids_between(init_period, end_period, company_id))
             else:
                 if mode == MODE_INITIAL:
                     period_to = self._get_previous_normal_period(
@@ -301,6 +305,9 @@ class AccountingExpressionProcessor(object):
         else:
             if mode == MODE_VARIATION:
                 domain = [('date', '>=', date_from), ('date', '<=', date_to)]
+            elif mode == MODE_UNALLOCATED:
+                init_period = self.env['account.period'].search([], order='date_start', limit=1)
+                domain = [('date', '>=', init_period.date_start), ('date', '<', date_from)]
             else:
                 raise UserError(_("Modes i and e are only applicable for "
                                 "fiscal periods"))
@@ -357,6 +364,10 @@ class AccountingExpressionProcessor(object):
                         account_ids_data.get(account_id,
                                              (AccountingNone, AccountingNone))
                     if field == 'bal':
+                        v += debit - credit
+                    elif field == 'pbal' and debit >= credit:
+                        v += debit - credit
+                    elif field == 'nbal' and debit < credit:
                         v += debit - credit
                     elif field == 'deb':
                         v += debit

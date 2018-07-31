@@ -69,7 +69,7 @@ class MisReportKpi(models.Model):
     description = fields.Char(required=True,
                               string='Description',
                               translate=True)
-    expression = fields.Char(required=True,
+    expression = fields.Char(required=False,
                              string='Expression')
     default_css_style = fields.Char(string='Default CSS style')
     css_style = fields.Char(string='CSS style expression')
@@ -297,7 +297,8 @@ class MisReport(models.Model):
         self.ensure_one()
         aep = AEP(self.env)
         for kpi in self.kpi_ids:
-            aep.parse_expr(kpi.expression)
+            if kpi.expression:
+                aep.parse_expr(kpi.expression)
         aep.done_parsing(root_account)
         return aep
 
@@ -443,10 +444,15 @@ class MisReport(models.Model):
         while True:
             for kpi in compute_queue:
                 try:
-                    kpi_val_comment = kpi.name + " = " + kpi.expression
-                    kpi_eval_expression = aep.replace_expr(kpi.expression)
-                    kpi_val = safe_eval(kpi_eval_expression, localdict)
-                    localdict[kpi.name] = kpi_val
+                    if kpi.expression:
+                        kpi_val_comment = kpi.name + " = " + kpi.expression
+                        kpi_eval_expression = aep.replace_expr(kpi.expression)
+                        kpi_val = safe_eval(kpi_eval_expression, localdict)
+                        localdict[kpi.name] = kpi_val
+                    else:
+                        kpi_val_comment = kpi.name
+                        kpi_val = None
+                        localdict[kpi.name] = kpi_val
                 except ZeroDivisionError:
                     kpi_val = None
                     kpi_val_rendered = '#DIV/0'
@@ -488,7 +494,6 @@ class MisReport(models.Model):
                     'expr': kpi.expression,
                     'drilldown': drilldown,
                 }
-
             if len(recompute_queue) == 0:
                 # nothing to recompute, we are done
                 break
